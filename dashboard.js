@@ -14,6 +14,7 @@
       }
 
       var currentWorkbook = null;
+      var historyData = null;
       var repsColumns = [3, 4, 5, 6, 7, 8];
 
       function setOverlayVisible(isVisible) {
@@ -130,6 +131,17 @@
               weightsRow.appendChild(buildWeightInput(weightValue));
             });
 
+            var barToggle = card.querySelector("[data-bar-toggle]");
+            var barWeightInput = card.querySelector("[data-bar-weight]");
+            if (exercise && exercise.pesoBarra) {
+              if (barToggle) {
+                barToggle.checked = true;
+              }
+              if (barWeightInput) {
+                barWeightInput.value = String(exercise.pesoBarra);
+              }
+            }
+
             setupBarControls(card);
             categoryBody.appendChild(card);
           });
@@ -145,6 +157,91 @@
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .replace(/[^a-z0-9]+/g, "");
+      }
+
+      function normalizeExerciseName(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+
+      function parseDateValue(value) {
+        if (!value) {
+          return null;
+        }
+        if (value instanceof Date) {
+          return value;
+        }
+        if (typeof value === "number" && window.XLSX && XLSX.SSF && XLSX.SSF.parse_date_code) {
+          var parsed = XLSX.SSF.parse_date_code(value);
+          if (parsed && parsed.y && parsed.m && parsed.d) {
+            return new Date(parsed.y, parsed.m - 1, parsed.d);
+          }
+        }
+        var text = String(value).trim();
+        var match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (match) {
+          var day = parseInt(match[1], 10);
+          var month = parseInt(match[2], 10);
+          var year = parseInt(match[3], 10);
+          if (year < 100) {
+            year += 2000;
+          }
+          return new Date(year, month - 1, day);
+        }
+        return null;
+      }
+
+      function parseHistoryFromWorkbook() {
+        if (!currentWorkbook || !currentWorkbook.Sheets || !currentWorkbook.Sheets.Datos) {
+          return { seriesMap: new Map(), barMap: new Map() };
+        }
+
+        var sheet = currentWorkbook.Sheets.Datos;
+        var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (!rows.length) {
+          return { seriesMap: new Map(), barMap: new Map() };
+        }
+
+        var seriesMap = new Map();
+        var barMap = new Map();
+
+        rows.forEach(function (row, index) {
+          if (index === 0 && normalizeHeader(row[0]) === "fecha") {
+            return;
+          }
+
+          var dateValue = parseDateValue(row[0]);
+          var exerciseName = String(row[5] || "").trim();
+          var seriesRaw = row[6];
+          var seriesIndex = parseInt(seriesRaw, 10);
+          var pesoValue = String(row[8] || "").trim();
+          var barValue = String(row[9] || "").trim();
+
+          if (!exerciseName || !dateValue || Number.isNaN(seriesIndex) || seriesIndex <= 0) {
+            return;
+          }
+
+          var timestamp = dateValue.getTime();
+          var normalizedName = normalizeExerciseName(exerciseName);
+          var seriesKey = normalizedName + "|" + seriesIndex;
+
+          if (pesoValue) {
+            var existing = seriesMap.get(seriesKey);
+            if (!existing || timestamp > existing.timestamp) {
+              seriesMap.set(seriesKey, { peso: pesoValue, timestamp: timestamp });
+            }
+          }
+
+          var barNumber = parseFloat(String(barValue).replace(",", "."));
+          var hasBarValue = barValue && !(barNumber === 0 || Number.isNaN(barNumber));
+          if (hasBarValue) {
+            var existingBar = barMap.get(normalizedName);
+            if (!existingBar || timestamp > existingBar.timestamp) {
+              barMap.set(normalizedName, { pesoBarra: barValue, timestamp: timestamp });
+            }
+          }
+        });
+
+        return { seriesMap: seriesMap, barMap: barMap };
       }
 
       function isHeaderRow(row) {
@@ -265,6 +362,34 @@
         });
       }
 
+      function applyHistoryToExercises(categories) {
+        if (!historyData) {
+          return categories;
+        }
+
+        categories.forEach(function (category) {
+          var exercises = Array.isArray(category.ejercicios) ? category.ejercicios : [];
+          exercises.forEach(function (exercise) {
+            var normalizedName = normalizeExerciseName(exercise.nombre);
+            var barEntry = historyData.barMap.get(normalizedName);
+            if (barEntry && barEntry.pesoBarra) {
+              exercise.pesoBarra = barEntry.pesoBarra;
+            }
+
+            var series = Array.isArray(exercise.series) ? exercise.series : [];
+            series.forEach(function (serie, index) {
+              var seriesKey = normalizedName + "|" + (index + 1);
+              var seriesEntry = historyData.seriesMap.get(seriesKey);
+              if (seriesEntry && seriesEntry.peso) {
+                serie.peso = seriesEntry.peso;
+              }
+            });
+          });
+        });
+
+        return categories;
+      }
+
       function syncDaySelects(selectedSheet) {
         if (daySelect.value !== selectedSheet) {
           daySelect.value = selectedSheet;
@@ -284,6 +409,7 @@
           return;
         }
 
+        exercises = applyHistoryToExercises(exercises);
         renderExercises(exercises);
         showError("");
         setOverlayVisible(false);
@@ -307,6 +433,7 @@
         showError("");
         resetDaySelects();
         currentWorkbook = null;
+        historyData = null;
         setOverlayVisible(true);
 
         if (!/\.xlsx$/i.test(file.name)) {
@@ -318,15 +445,20 @@
         reader.onload = function () {
           try {
             currentWorkbook = XLSX.read(reader.result, { type: "array" });
+            historyData = parseHistoryFromWorkbook();
             var sheetNames = currentWorkbook.SheetNames || [];
             if (!sheetNames.length) {
               showError("El archivo no contiene hojas.");
               return;
             }
 
-            populateDaySelects(sheetNames);
-            if (sheetNames.length === 1) {
-              handleDaySelection(sheetNames[0]);
+            var daySheetNames = sheetNames.filter(function (name) {
+              return normalizeHeader(name) !== "datos";
+            });
+
+            populateDaySelects(daySheetNames);
+            if (daySheetNames.length === 1) {
+              handleDaySelection(daySheetNames[0]);
             }
           } catch (error) {
             showError("No se pudo leer el archivo. Verifica que sea .xlsx valido.");
@@ -731,6 +863,8 @@
       var endTimeButton = document.getElementById("end-time-button");
       var exportButton = document.getElementById("export-data-button");
       var genderToggle = document.getElementById("gender-toggle");
+      var startTimeInput = document.getElementById("start-time-input");
+      var endTimeInput = document.getElementById("end-time-input");
 
       if (!endTimeButton || !exportButton) {
         return;
@@ -753,6 +887,50 @@
           return "";
         }
         return cycleSelect.value || "";
+      }
+
+      function parseTimeToSeconds(timeValue) {
+        if (!timeValue) {
+          return null;
+        }
+        var parts = String(timeValue).split(":");
+        if (parts.length < 2) {
+          return null;
+        }
+        var hours = parseInt(parts[0], 10);
+        var minutes = parseInt(parts[1], 10);
+        var seconds = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+        if ([hours, minutes, seconds].some(function (value) { return Number.isNaN(value); })) {
+          return null;
+        }
+        return (hours * 3600) + (minutes * 60) + seconds;
+      }
+
+      function formatDuration(seconds) {
+        var safeSeconds = Math.max(0, seconds || 0);
+        var hours = Math.floor(safeSeconds / 3600);
+        var minutes = Math.floor((safeSeconds % 3600) / 60);
+        var remaining = safeSeconds % 60;
+        return (
+          String(hours).padStart(2, "0") +
+          ":" +
+          String(minutes).padStart(2, "0") +
+          ":" +
+          String(remaining).padStart(2, "0")
+        );
+      }
+
+      function getDurationValue(startValue, endValue) {
+        var startSeconds = parseTimeToSeconds(startValue);
+        var endSeconds = parseTimeToSeconds(endValue);
+        if (startSeconds === null || endSeconds === null) {
+          return "";
+        }
+        var diff = endSeconds - startSeconds;
+        if (diff < 0) {
+          diff += 24 * 3600;
+        }
+        return formatDuration(diff);
       }
 
       function findExerciseCard(element) {
@@ -827,13 +1005,31 @@
         }
         var dateValue = getTodayString();
         var cyclePhase = getCyclePhaseValue();
-        var header = ["Fecha", "Clima", "Ejercicio", "Serie", "Repeticiones", "Peso", "Peso Barra", "Fase del Ciclo"];
+        var startTimeValue = startTimeInput ? startTimeInput.value : "";
+        var endTimeValue = endTimeInput ? endTimeInput.value : "";
+        var durationValue = getDurationValue(startTimeValue, endTimeValue);
+        var header = [
+          "Fecha",
+          "Hora Arranque",
+          "Hora Fin",
+          "Duracion",
+          "Clima",
+          "Ejercicio",
+          "Serie",
+          "Repeticiones",
+          "Peso",
+          "Peso Barra",
+          "Fase del Ciclo"
+        ];
         var data = [header];
         var exerciseRows = collectExerciseRows();
 
         exerciseRows.forEach(function (row) {
           data.push([
             dateValue,
+            startTimeValue,
+            endTimeValue,
+            durationValue,
             0,
             row.ejercicio,
             row.serie,
