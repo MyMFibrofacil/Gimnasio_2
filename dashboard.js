@@ -61,7 +61,7 @@
 
       function buildRepItem(value) {
         var wrapper = document.createElement("div");
-        wrapper.className = "flex flex-col items-center min-w-[3rem] gap-1";
+        wrapper.className = "flex flex-col items-center min-w-[2.25rem] gap-1";
         var text = document.createElement("span");
         text.className = "text-sm font-medium text-gray-900 dark:text-white";
         text.textContent = value;
@@ -71,11 +71,34 @@
 
       function buildWeightInput(value) {
         var input = document.createElement("input");
-        input.className = "w-12 h-9 p-1 text-center bg-white dark:bg-background-dark border border-gray-300 dark:border-border-dark rounded focus:border-primary focus:ring-1 focus:ring-primary text-sm font-medium text-gray-900 dark:text-white placeholder-gray-400";
+        input.className = "w-10 h-8 p-1 text-center bg-white dark:bg-background-dark border border-gray-300 dark:border-border-dark rounded focus:border-primary focus:ring-1 focus:ring-primary text-sm font-medium text-gray-900 dark:text-white placeholder-gray-400";
         input.placeholder = "kg";
         input.type = "text";
         input.value = value;
         return input;
+      }
+
+      function setupBarControls(card) {
+        var barToggle = card.querySelector("[data-bar-toggle]");
+        var barWeight = card.querySelector("[data-bar-weight]");
+        var barWeightWrapper = card.querySelector("[data-bar-weight-wrapper]");
+        if (!barToggle || !barWeight) {
+          return;
+        }
+
+        function updateBarState() {
+          var isEnabled = barToggle.checked;
+          barWeight.disabled = !isEnabled;
+          if (barWeightWrapper) {
+            barWeightWrapper.style.display = isEnabled ? "flex" : "none";
+          }
+          if (!isEnabled) {
+            barWeight.value = "";
+          }
+        }
+
+        barToggle.addEventListener("change", updateBarState);
+        updateBarState();
       }
 
       function renderExercises(categories) {
@@ -107,6 +130,7 @@
               weightsRow.appendChild(buildWeightInput(weightValue));
             });
 
+            setupBarControls(card);
             categoryBody.appendChild(card);
           });
 
@@ -703,9 +727,135 @@
       });
     }
 
+    function initExportButton() {
+      var endTimeButton = document.getElementById("end-time-button");
+      var exportButton = document.getElementById("export-data-button");
+      var genderToggle = document.getElementById("gender-toggle");
+
+      if (!endTimeButton || !exportButton) {
+        return;
+      }
+
+      function getTodayString() {
+        var now = new Date();
+        var day = String(now.getDate()).padStart(2, "0");
+        var month = String(now.getMonth() + 1).padStart(2, "0");
+        var year = String(now.getFullYear());
+        return day + "-" + month + "-" + year;
+      }
+
+      function getCyclePhaseValue() {
+        if (!genderToggle || !genderToggle.checked) {
+          return "";
+        }
+        var cycleSelect = document.querySelector("#cycle-phase-section select");
+        if (!cycleSelect) {
+          return "";
+        }
+        return cycleSelect.value || "";
+      }
+
+      function findExerciseCard(element) {
+        var current = element;
+        while (current && current !== document.body) {
+          if (current.querySelector && current.querySelector("[data-reps-row]") && current.querySelector("[data-weights-row]")) {
+            return current;
+          }
+          current = current.parentElement;
+        }
+        return null;
+      }
+
+      function collectExerciseRows() {
+        var exerciseList = document.getElementById("exercise-list");
+        if (!exerciseList) {
+          return [];
+        }
+
+        var rows = [];
+        var nameElements = exerciseList.querySelectorAll("[data-exercise-name]");
+
+        nameElements.forEach(function (nameElement) {
+          var card = findExerciseCard(nameElement);
+          if (!card) {
+            return;
+          }
+
+          var repsRow = card.querySelector("[data-reps-row]");
+          var weightsRow = card.querySelector("[data-weights-row]");
+          if (!repsRow || !weightsRow) {
+            return;
+          }
+
+          var barToggle = card.querySelector("[data-bar-toggle]");
+          var barWeightInput = card.querySelector("[data-bar-weight]");
+          var barWeightValue = "0";
+          if (barToggle && barToggle.checked) {
+            barWeightValue = barWeightInput ? barWeightInput.value.trim() : "";
+            if (!barWeightValue) {
+              barWeightValue = "0";
+            }
+          }
+
+          var repsItems = Array.prototype.slice.call(repsRow.querySelectorAll("span"));
+          var weightInputs = Array.prototype.slice.call(weightsRow.querySelectorAll("input"));
+          var seriesCount = Math.max(repsItems.length, weightInputs.length);
+
+          for (var i = 0; i < seriesCount; i += 1) {
+            var repsValue = repsItems[i] ? repsItems[i].textContent.trim() : "";
+            var weightValue = weightInputs[i] ? weightInputs[i].value.trim() : "";
+            rows.push({
+              ejercicio: nameElement.textContent.trim() || "Ejercicio",
+              serie: i + 1,
+              repeticiones: repsValue,
+              peso: weightValue,
+              pesoBarra: barWeightValue
+            });
+          }
+        });
+
+        return rows;
+      }
+
+      endTimeButton.addEventListener("click", function () {
+        exportButton.style.display = "block";
+      });
+
+      exportButton.addEventListener("click", function () {
+        if (!window.XLSX) {
+          return;
+        }
+        var dateValue = getTodayString();
+        var cyclePhase = getCyclePhaseValue();
+        var header = ["Fecha", "Clima", "Ejercicio", "Serie", "Repeticiones", "Peso", "Peso Barra", "Fase del Ciclo"];
+        var data = [header];
+        var exerciseRows = collectExerciseRows();
+
+        exerciseRows.forEach(function (row) {
+          data.push([
+            dateValue,
+            0,
+            row.ejercicio,
+            row.serie,
+            row.repeticiones,
+            row.peso,
+            row.pesoBarra,
+            cyclePhase
+          ]);
+        });
+
+        var workbook = XLSX.utils.book_new();
+        var sheet = XLSX.utils.aoa_to_sheet(data);
+        XLSX.utils.book_append_sheet(workbook, sheet, "Entrenamiento");
+        var filename = "entrenamiento_" + dateValue + ".xlsx";
+        XLSX.writeFile(workbook, filename);
+      });
+    }
+
     initCyclePhaseToggle();
     initTimerSection();
     initWorkoutTimer();
     initTimeButtons();
+    initExportButton();
     initWorkoutFileLoader();
   })();

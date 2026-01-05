@@ -246,6 +246,9 @@
                     Terminar
                 </button>
 </div>
+<button class="w-full mt-3 py-3 bg-primary hover:bg-green-400 text-background-dark font-bold rounded-lg transition-colors" id="export-data-button" style="display: none;">
+Exportar datos
+</button>
 </div>
 <div class="grid grid-cols-2 gap-4">
 <button class="flex flex-col items-center justify-center gap-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-border-dark p-4 rounded-xl hover:border-primary/50 hover:shadow-md transition-all group">
@@ -326,14 +329,24 @@
 <template id="exercise-template">
 <div class="bg-gray-50 dark:bg-white/5 rounded-lg p-3 border border-gray-200 dark:border-border-dark">
 <div class="flex justify-between items-center mb-3">
+<div class="flex items-center gap-3 flex-wrap">
 <h4 class="font-bold text-gray-900 dark:text-white text-base" data-exercise-name>Ejercicio</h4>
+<label class="flex items-center gap-2 text-xs text-text-secondary uppercase font-bold">
+<input class="h-4 w-4 cursor-pointer" data-bar-toggle type="checkbox"/>
+Barra libre
+</label>
+</div>
 <span class="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded" data-series-count>0 Series</span>
+</div>
+<div class="flex items-center gap-2 mb-2" data-bar-weight-wrapper style="display: none;">
+<span class="text-xs text-text-secondary uppercase font-bold">Peso Barra</span>
+<input class="w-16 h-8 p-1 text-center bg-white dark:bg-background-dark border border-gray-300 dark:border-border-dark rounded focus:border-primary focus:ring-1 focus:ring-primary text-xs font-medium text-gray-900 dark:text-white placeholder-gray-400" data-bar-weight placeholder="kg" type="text" disabled/>
 </div>
 <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 items-center">
 <div class="text-xs text-text-secondary uppercase font-bold self-end pb-2">Reps</div>
-<div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar" data-reps-row></div>
+<div class="flex flex-wrap gap-1 pb-2" data-reps-row></div>
 <div class="text-xs text-text-secondary uppercase font-bold self-center pt-1">Peso</div>
-<div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar" data-weights-row></div>
+<div class="flex flex-wrap gap-1 pb-1" data-weights-row></div>
 </div>
 </div>
 </template>
