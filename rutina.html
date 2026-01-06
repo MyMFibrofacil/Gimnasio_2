@@ -218,9 +218,13 @@
       <div class="grid grid-cols-2 gap-4">
         <button
           class="flex flex-col items-center justify-center gap-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-border-dark p-4 rounded-xl hover:border-primary/50 hover:shadow-md transition-all group"
+          id="weather-refresh-button"
+          type="button"
         >
           <span class="material-symbols-outlined text-3xl text-blue-400 group-hover:scale-110 transition-transform">cloud</span>
           <span class="text-sm font-medium text-gray-900 dark:text-white">Actualizar clima</span>
+          <span class="text-xs text-text-secondary" id="weather-status">Sin datos</span>
+          <span class="text-[11px] text-text-secondary" id="weather-updated"></span>
         </button>
         <button
           class="flex flex-col items-center justify-center gap-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-border-dark p-4 rounded-xl hover:border-primary/50 hover:shadow-md transition-all group"
@@ -365,6 +369,6 @@
     </template>
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="dashboard.js"></script>
+    <script src="clima.js"></script>
   </body>
 </html>
-

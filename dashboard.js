@@ -1096,6 +1096,25 @@
         return cycleSelect.value || "";
       }
 
+      function getStoredWeatherSummary() {
+        if (!window.sessionStorage) {
+          return "";
+        }
+        var raw = sessionStorage.getItem("workoutWeatherSnapshot");
+        if (!raw) {
+          return "";
+        }
+        try {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.summary) {
+            return parsed.summary;
+          }
+        } catch (error) {
+          return "";
+        }
+        return "";
+      }
+
       function parseTimeToSeconds(timeValue) {
         if (!timeValue) {
           return null;
@@ -1215,6 +1234,10 @@
         var startTimeValue = startTimeInput ? startTimeInput.value : "";
         var endTimeValue = endTimeInput ? endTimeInput.value : "";
         var durationValue = getDurationValue(startTimeValue, endTimeValue);
+        var weatherValue = getStoredWeatherSummary();
+        if (!weatherValue) {
+          weatherValue = "Sin datos";
+        }
         var header = [
           "Fecha",
           "Hora Arranque",
@@ -1237,7 +1260,7 @@
             startTimeValue,
             endTimeValue,
             durationValue,
-            0,
+            weatherValue,
             row.ejercicio,
             row.serie,
             row.repeticiones,
