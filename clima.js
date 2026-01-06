@@ -1,5 +1,6 @@
 (function () {
   var WEATHER_STORAGE_KEY = "workoutWeatherSnapshot";
+  var WEATHER_API_KEY = "688995b93d224ff4b9c180508260601";
   var button = document.getElementById("weather-refresh-button");
   var statusLabel = document.getElementById("weather-status");
   var updatedLabel = document.getElementById("weather-updated");
@@ -79,66 +80,35 @@
     setUpdated("");
   }
 
-  function getWeatherLabel(code) {
-    var weatherCode = parseInt(code, 10);
-    if (Number.isNaN(weatherCode)) {
-      return "";
+  function buildSummary(temperature, humidity, conditionText) {
+    var parts = [];
+    var roundedTemp = Math.round(Number(temperature));
+    if (!Number.isNaN(roundedTemp)) {
+      parts.push(roundedTemp + "C");
     }
-    if (weatherCode === 0) {
-      return "Despejado";
+    var roundedHumidity = Math.round(Number(humidity));
+    if (!Number.isNaN(roundedHumidity)) {
+      parts.push(roundedHumidity + "% HR");
     }
-    if (weatherCode === 1 || weatherCode === 2) {
-      return "Mayormente despejado";
+    if (conditionText) {
+      parts.push(conditionText);
     }
-    if (weatherCode === 3) {
-      return "Nublado";
+    if (!parts.length) {
+      return "Clima";
     }
-    if (weatherCode === 45 || weatherCode === 48) {
-      return "Neblina";
-    }
-    if (weatherCode >= 51 && weatherCode <= 57) {
-      return "Llovizna";
-    }
-    if (weatherCode >= 61 && weatherCode <= 67) {
-      return "Lluvia";
-    }
-    if (weatherCode >= 71 && weatherCode <= 77) {
-      return "Nieve";
-    }
-    if (weatherCode >= 80 && weatherCode <= 82) {
-      return "Chubascos";
-    }
-    if (weatherCode === 85 || weatherCode === 86) {
-      return "Nieve ligera";
-    }
-    if (weatherCode === 95) {
-      return "Tormenta";
-    }
-    if (weatherCode === 96 || weatherCode === 99) {
-      return "Tormenta con granizo";
-    }
-    return "Clima";
-  }
-
-  function buildSummary(temperature, code) {
-    var label = getWeatherLabel(code);
-    var rounded = Math.round(Number(temperature));
-    if (Number.isNaN(rounded)) {
-      return label || "Clima";
-    }
-    if (label) {
-      return rounded + "C - " + label;
-    }
-    return rounded + "C";
+    return parts.join(" - ");
   }
 
   function fetchWeatherForCoords(coords) {
+    if (!WEATHER_API_KEY) {
+      return Promise.reject(new Error("missing api key"));
+    }
     var url =
-      "https://api.open-meteo.com/v1/forecast?latitude=" +
-      encodeURIComponent(coords.latitude) +
-      "&longitude=" +
-      encodeURIComponent(coords.longitude) +
-      "&current=temperature_2m,weathercode,apparent_temperature&timezone=auto";
+      "https://api.weatherapi.com/v1/current.json?key=" +
+      encodeURIComponent(WEATHER_API_KEY) +
+      "&q=" +
+      encodeURIComponent(coords.latitude + "," + coords.longitude) +
+      "&aqi=no";
     return fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
       if (!response.ok) {
         throw new Error("weather request failed");
@@ -151,14 +121,16 @@
     return fetchWeatherForCoords(coords)
       .then(function (data) {
         var current = data && data.current ? data.current : null;
-        if (!current || current.temperature_2m == null) {
+        if (!current || current.temp_c == null) {
           throw new Error("missing weather data");
         }
-        var summary = buildSummary(current.temperature_2m, current.weathercode);
+        var conditionText = current.condition && current.condition.text ? current.condition.text : "";
+        var summary = buildSummary(current.temp_c, current.humidity, conditionText);
         var snapshot = {
           summary: summary,
-          temperature: current.temperature_2m,
-          code: current.weathercode,
+          temperature: current.temp_c,
+          humidity: current.humidity,
+          condition: conditionText,
           updatedAt: new Date().toISOString(),
           latitude: coords.latitude,
           longitude: coords.longitude,
